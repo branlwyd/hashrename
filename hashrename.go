@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 )
@@ -18,7 +17,7 @@ var (
 func main() {
 	flag.Parse()
 	if len(flag.Args()) == 0 {
-		log.Fatalf("Usage: hashrename [--dry_run] globs")
+		die("Usage: hashrename [--dry_run] globs")
 	}
 
 	// Find files to rename.
@@ -26,13 +25,13 @@ func main() {
 	for _, glob := range flag.Args() {
 		fns, err := filepath.Glob(glob)
 		if err != nil {
-			log.Fatalf("Bad glob %q: %v", glob, err)
+			die("Bad glob %q: %v", glob, err)
 		}
 		for _, fn := range fns {
 			files[fn] = struct{}{}
 		}
 	}
-	log.Printf("Renaming %d file(s)", len(files))
+	fmt.Printf("Renaming %d file(s)\n", len(files))
 
 	// Compute sha1sums.
 	// TODO: do this in parallel? (may not be helpful; typically, this loop is IO-bound)
@@ -41,13 +40,13 @@ func main() {
 		hash.Reset()
 		f, err := os.Open(fn)
 		if err != nil {
-			log.Fatalf("Could not open %q: %v", fn, err)
+			die("Could not open %q: %v", fn, err)
 		}
 		if _, err := io.Copy(hash, f); err != nil {
-			log.Fatalf("Could not read %q: %v", fn, err)
+			die("Could not read %q: %v", fn, err)
 		}
 		if err := f.Close(); err != nil {
-			log.Fatalf("Could not close %q: %v", fn, err)
+			die("Could not close %q: %v", fn, err)
 		}
 
 		newFn := hex.EncodeToString(hash.Sum(nil))
@@ -56,11 +55,16 @@ func main() {
 			newFn = fmt.Sprintf("%s%s", newFn, ext)
 		}
 		newFn = filepath.Join(filepath.Dir(fn), newFn)
-		log.Printf("%s -> %s", fn, newFn)
+		fmt.Printf("%s -> %s\n", fn, newFn)
 		if !*dryRun {
 			if err := os.Rename(fn, newFn); err != nil {
-				log.Fatalf("Could not rename %q to %q: %v", fn, newFn, err)
+				fmt.Fprintf(os.Stderr, "Could not rename %q to %q: %v\n", fn, newFn, err)
 			}
 		}
 	}
+}
+
+func die(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	os.Exit(1)
 }
