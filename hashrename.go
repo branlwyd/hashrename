@@ -40,13 +40,13 @@ func main() {
 		hash.Reset()
 		f, err := os.Open(fn)
 		if err != nil {
-			die("Could not open %q: %v", fn, err)
+			die("Couldn't open %q: %v", fn, err)
 		}
 		if _, err := io.Copy(hash, f); err != nil {
-			die("Could not read %q: %v", fn, err)
+			die("Couldn't read %q: %v", fn, err)
 		}
 		if err := f.Close(); err != nil {
-			die("Could not close %q: %v", fn, err)
+			die("Couldn't close %q: %v", fn, err)
 		}
 
 		newFn := hex.EncodeToString(hash.Sum(nil))
@@ -58,7 +58,7 @@ func main() {
 		fmt.Printf("%s -> %s\n", fn, newFn)
 		if !*dryRun {
 			if err := os.Rename(fn, newFn); err != nil {
-				fmt.Fprintf(os.Stderr, "Could not rename %q to %q: %v\n", fn, newFn, err)
+				fmt.Fprintf(os.Stderr, "Couldn't rename %q to %q: %v\n", fn, newFn, err)
 			}
 		}
 	}
