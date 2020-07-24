@@ -10,15 +10,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sync"
 	"sync/atomic"
 )
 
 var (
-	dryRun      = flag.Bool("dry_run", false, "If set, do not rename files, just print what renames would occur.")
-	concurrency = flag.Int("concurrency", 0, "The number of files to process at once. If unset, a reasonable value will be chosen automatically.")
-	hashName    = flag.String("hash", "sha512_256", "The hash to use. Supported values include `sha1` & `sha512_256`.")
+	dryRun              = flag.Bool("dry_run", false, "If set, do not rename files, just print what renames would occur.")
+	concurrency         = flag.Int("concurrency", 0, "The number of files to process at once. If unset, a reasonable value will be chosen automatically.")
+	hashName            = flag.String("hash", "sha512_256", "The hash to use. Supported values include `sha1` & `sha512_256`.")
+	skipHashedFilenames = flag.Bool("skip_hashed_filenames", true, "If set, skip files whose names appear to already be a hash. (Does not check that the hash is correct.)")
 )
 
 func main() {
@@ -43,6 +45,18 @@ func main() {
 		die("Unknown --hash value %q", *hashName)
 	}
 
+	fnFilter := func(string) bool { return true }
+	if *skipHashedFilenames {
+		// Build & hash some data to figure out how big a filename hash will be.
+		hLen := 2 * newHash().Size() // times 2 to account for hex-encoding
+		r, err := regexp.Compile(fmt.Sprintf(`^[0-9a-f]{%d}(\..*)?$`, hLen))
+		if err != nil {
+			die("Couldn't compile filter regex: %v", err)
+		}
+
+		fnFilter = func(fn string) bool { return !r.MatchString(filepath.Base(fn)) }
+	}
+
 	// Start per-file workers.
 	var wg sync.WaitGroup
 	var errCount int64
@@ -51,23 +65,30 @@ func main() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			hash := newHash()
+			h := newHash()
 			for fn := range ch {
 				if err := func() error {
-					hash.Reset()
+					// Check filter.
+					if !fnFilter(fn) {
+						return nil
+					}
+
+					// Hash file.
 					f, err := os.Open(fn)
 					if err != nil {
 						return fmt.Errorf("couldn't open: %w", err)
 					}
 					defer f.Close()
-					if _, err := io.Copy(hash, f); err != nil {
+					h.Reset()
+					if _, err := io.Copy(h, f); err != nil {
 						return fmt.Errorf("couldn't read: %w", err)
 					}
 					if err := f.Close(); err != nil {
 						return fmt.Errorf("couldn't close: %w", err)
 					}
 
-					newFn := hex.EncodeToString(hash.Sum(nil))
+					// Move file to new filename based on hash.
+					newFn := hex.EncodeToString(h.Sum(nil))
 					ext := filepath.Ext(fn)
 					if ext != "" {
 						newFn = fmt.Sprintf("%s%s", newFn, ext)
@@ -99,7 +120,7 @@ func main() {
 			files[fn] = struct{}{}
 		}
 	}
-	fmt.Printf("Renaming %d file(s)\n", len(files))
+	fmt.Printf("Processing %d file(s)\n", len(files))
 	for fn := range files {
 		ch <- fn
 	}
