@@ -53,7 +53,6 @@ func main() {
 		if err != nil {
 			die("Couldn't compile filter regex: %v", err)
 		}
-
 		fnFilter = func(fn string) bool { return !r.MatchString(filepath.Base(fn)) }
 	}
 
@@ -73,12 +72,21 @@ func main() {
 						return nil
 					}
 
-					// Hash file.
+					// Open & stat file, skipping directories.
 					f, err := os.Open(fn)
 					if err != nil {
 						return fmt.Errorf("couldn't open: %w", err)
 					}
 					defer f.Close()
+					stat, err := f.Stat()
+					if err != nil {
+						return fmt.Errorf("couldn't stat: %w", err)
+					}
+					if stat.IsDir() {
+						return nil
+					}
+
+					// Hash file.
 					h.Reset()
 					if _, err := io.Copy(h, f); err != nil {
 						return fmt.Errorf("couldn't read: %w", err)
